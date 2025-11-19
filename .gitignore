@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+
+# Dependencies
+Pipfile
+Pipfile.lock
+
+# Output files
+output/*.pkl
+output/*.txt
+output_*/
+!output/.gitkeep
+!requirements.txt
+!README*.txt
+
+# Audio files (large)
+examples/*.wav
+examples/*.mp3
+examples/*.flac
+*.wav
+*.mp3
+*.flac
+
+# Model caches
+.cache/
+*.ckpt
+*.pth
+*.bin
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
