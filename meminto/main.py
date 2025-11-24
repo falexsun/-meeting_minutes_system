@@ -14,12 +14,12 @@ from meminto.helpers import (
     select_language,
     write_text_to_file,
 )
-from meminto.llm.llm import LLM
 from meminto.llm.ollama_llm import OllamaLLM
+from meminto.llm.lmstudio_llm import LMStudioLLM
 from meminto.meeting_minutes_generator import (
     MeetingMinutesGenerator,
 )
-from meminto.transcriber import LocalTranscriber, RemoteTranscriber
+from meminto.transcriber import LocalTranscriber
 from dotenv import load_dotenv
 
 EXAMPLE_INPUT_FILE = Path(__file__).parent.resolve() / "../examples/Scoreboard.wav"
@@ -47,33 +47,32 @@ DEFAULT_LANGUAGE = Language.RUSSIAN
     "--language",
     show_default=True,
     default=DEFAULT_LANGUAGE,
-    help="Select the language in which the meeting minutes should be generated. Currently supproted are 'english' and 'german'.",
+    help="Select the language in which the meeting minutes should be generated. Currently supproted are 'english' and 'russian'.",
 )
 @click.option(
-    "-rt",
-    "--remote-transcriber",
+    "-lm",
+    "--use-lmstudio",
     is_flag=True,
     show_default=True,
-    default=False,
-    help="If selected the Meminto will use the remote transcriber. The enviroment variables 'TRANSCRIBER_URL' and 'TRANSCRIBER_AUTHORIZATION' need to be set.",
-)
-@click.option(
-    "-ol",
-    "--use-ollama",
-    is_flag=True,
-    show_default=True,
-    default=False,
-    help="If selected the Meminto will use Ollama for local LLM. The enviroment variable 'OLLAMA_MODEL' needs to be set.",
+    default=True,
+    help="If selected the Meminto will use LM Studio for local LLM. The enviroment variable 'LMSTUDIO_MODEL' needs to be set.",
 )
 def main(
-    input_file: str, output_folder: str, language: str, remote_transcriber: bool, use_ollama: bool
+    input_file: str, output_folder: str, language: str, use_lmstudio: bool
 ) -> None:
     load_dotenv()
     audio_input_file_path = parse_input_file_path(input_file)
     output_folder_path = parse_output_folder_path(output_folder)
     selected_language = select_language(language)
+    
+    # Принудительно использовать только локальные модели
+    print("⚠️  ВНИМАНИЕ: Используются только локальные модели")
+    print("⚠️  Данные НЕ передаются на внешние сервисы")
+    print("⏱️  Таймаут обработки: 1 час")
+    print("\n" + "="*50 + "\n")
+    
     create_meeting_minutes(
-        audio_input_file_path, output_folder_path, selected_language, remote_transcriber, use_ollama
+        audio_input_file_path, output_folder_path, selected_language, use_lmstudio
     )
 
 
@@ -82,10 +81,11 @@ def create_meeting_minutes(
     audio_input_file_path: Path,
     output_folder_path: Path,
     language: Language,
-    remote_transcriber: bool,
-    use_ollama: bool,
+    use_lmstudio: bool,
 ):
-    ### Diarization ###
+    ### Diarization (локально) ###
+    print("🔒 Диаризация: используется локальная модель pyannote")
+    print("⏳ Начинается анализ аудио...")
     diarizer = Diarizer(
         model="pyannote/speaker-diarization@2.1",
         hugging_face_token=os.environ["HUGGING_FACE_ACCESS_TOKEN"],
@@ -95,36 +95,48 @@ def create_meeting_minutes(
     diarization_text = diarizer.diarization_to_text(diarization)
     write_text_to_file(diarization_text, output_folder_path / "diarization.txt")
     save_as_pkl(diarization, output_folder_path / "diarization.pkl")
+    print("✅ Диаризация завершена\n")
 
-    ### Transcription ###
+    ### Transcription (локально) ###
     diarization = load_pkl(output_folder_path / "diarization.pkl")
     audio_sections = split_audio(audio_input_file_path, diarization)
 
-    if remote_transcriber:
-        print("Using RemoteTranscriber.")
-        transcriber = RemoteTranscriber(
-            url=os.environ["TRANSCRIBER_URL"],
-            authorization=os.environ["TRANSCRIBER_AUTHORIZATION"],
-        )
-    else:
-        print("Using LocalTranscriber.")
-        transcriber = LocalTranscriber()
+    print("🔒 Транскрипция: используется локальная модель Whisper")
+    print("⏳ Начинается транскрипция (это может занять несколько минут)...")
+    transcriber = LocalTranscriber()
     transcript = transcriber.transcribe(audio_sections)
 
     transcript_text = transcriber.transcript_to_txt(transcript)
     write_text_to_file(transcript_text, output_folder_path / "transcript.txt")
     save_as_pkl(transcript, output_folder_path / "transcript.pkl")
+    print("✅ Транскрипция завершена\n")
 
-    ### Generation ###
-    if use_ollama:
-        print("Using Ollama for LLM.")
-        # Для Ollama используем простую модель без токенизатора
-        model_name = os.environ.get("OLLAMA_MODEL", "llama3.2")
+    ### Generation (локально) ###
+    if use_lmstudio:
+        print("🔒 Генерация протокола: используется локальная LLM через LM Studio")
+        print("⏳ Это может занять несколько минут в зависимости от размера протокола...")
+        model_name = os.environ.get("LMSTUDIO_MODEL", "local-model")
+        lmstudio_url = os.environ.get("LMSTUDIO_URL", "http://localhost:1234/v1/chat/completions")
+        max_tokens = int(os.environ.get("LMSTUDIO_MAX_TOKENS", "8000"))
+
+        tokenizer = Tokenizer(
+            model_name,
+            hugging_face_acces_token=os.environ.get("HUGGING_FACE_ACCESS_TOKEN", ""),
+        )
+
+        llm = LMStudioLLM(
+            model=model_name,
+            url=lmstudio_url,
+            temperature=0.5,
+            max_tokens=max_tokens,
+        )
+    else:
+        print("🔒 Генерация протокола: используется локальная LLM через Ollama")
+        print("⏳ Это может занять несколько минут в зависимости от размера протокола...")
+        model_name = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
         ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/generate")
-        max_tokens = int(os.environ.get("OLLAMA_MAX_TOKENS", "4000"))
+        max_tokens = int(os.environ.get("OLLAMA_MAX_TOKENS", "8000"))
 
-        # Создаем упрощенный токенизатор (без доступа к HuggingFace)
-        # Для Ollama можно использовать приблизительный подсчет токенов
         tokenizer = Tokenizer(
             model_name,
             hugging_face_acces_token=os.environ.get("HUGGING_FACE_ACCESS_TOKEN", ""),
@@ -136,19 +148,6 @@ def create_meeting_minutes(
             temperature=0.5,
             max_tokens=max_tokens,
         )
-    else:
-        print("Using remote LLM API.")
-        tokenizer = Tokenizer(
-            os.environ["LLM_MODEL"],
-            hugging_face_acces_token=os.environ["HUGGING_FACE_ACCESS_TOKEN"],
-        )
-        llm = LLM(
-            model=os.environ["LLM_MODEL"],
-            url=os.environ["LLM_URL"],
-            authorization=os.environ["LLM_AUTHORIZATION"],
-            temperature=0.5,
-            max_tokens=int(os.environ["LLM_MAX_TOKENS"]),
-        )
 
     transcript = load_pkl(output_folder_path / "transcript.pkl")
     meeting_minutes_generator = MeetingMinutesGenerator(tokenizer=tokenizer, llm=llm)
@@ -157,6 +156,8 @@ def create_meeting_minutes(
     )
 
     write_text_to_file(meeting_minutes, output_folder_path / "meeting_minutes.txt")
+    print("✅ Протокол совещания успешно создан (полностью локально)")
+    print(f"📁 Файл сохранен: {output_folder_path / 'meeting_minutes.txt'}")
 
 
 if __name__ == "__main__":
