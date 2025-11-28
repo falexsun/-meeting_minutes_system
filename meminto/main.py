@@ -62,6 +62,13 @@ def main(
 ) -> None:
     load_dotenv()
     
+    # Отключение Xet Storage (вызывает таймауты на некоторых серверах)
+    os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
+    os.environ["HF_HUB_DISABLE_XET"] = "1"
+    
+    # Увеличение таймаута для загрузки моделей
+    os.environ["HF_HUB_DOWNLOAD_TIMEOUT"] = "300"
+    
     # Настройка офлайн-режима для Hugging Face
     offline_mode = os.environ.get("OFFLINE_MODE", "false").lower() == "true"
     if offline_mode:
@@ -73,6 +80,7 @@ def main(
         os.environ.pop("HF_HUB_OFFLINE", None)
         os.environ.pop("TRANSFORMERS_OFFLINE", None)
         print("🌐 Онлайн-режим: разрешена загрузка моделей из Hugging Face")
+        print("⚙️ Xet Storage отключён для стабильной загрузки")
     
     audio_input_file_path = parse_input_file_path(input_file)
     output_folder_path = parse_output_folder_path(output_folder)
