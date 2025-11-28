@@ -87,8 +87,9 @@ def create_meeting_minutes(
     print("🔒 Диаризация: используется локальная модель pyannote")
     print("⏳ Начинается анализ аудио...")
     diarizer = Diarizer(
-        model="pyannote/speaker-diarization@2.1",
+        model="pyannote/speaker-diarization-3.1",
         hugging_face_token=os.environ["HUGGING_FACE_ACCESS_TOKEN"],
+        revision=None
     )
     diarization = diarizer.diarize_audio(audio_input_file_path)
 

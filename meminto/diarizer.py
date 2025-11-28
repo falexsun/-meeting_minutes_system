@@ -6,10 +6,27 @@ from meminto.decorators import log_time
 
 
 class Diarizer:
-    def __init__(self, model: str, hugging_face_token: str):
-        self.pipeline = Pipeline.from_pretrained(
-            model, use_auth_token=hugging_face_token
-        )
+    def __init__(self, model: str, hugging_face_token: str, revision: str = None):
+        # Попробовать новый параметр 'token', если не работает - использовать старый 'use_auth_token'
+        try:
+            if revision:
+                self.pipeline = Pipeline.from_pretrained(
+                    model, token=hugging_face_token, revision=revision
+                )
+            else:
+                self.pipeline = Pipeline.from_pretrained(
+                    model, token=hugging_face_token
+                )
+        except TypeError:
+            # Старая версия pyannote.audio использует use_auth_token
+            if revision:
+                self.pipeline = Pipeline.from_pretrained(
+                    model, use_auth_token=hugging_face_token, revision=revision
+                )
+            else:
+                self.pipeline = Pipeline.from_pretrained(
+                    model, use_auth_token=hugging_face_token
+                )
         if torch.cuda.is_available():
             self.pipeline.to(torch.device("cuda"))
             print("Running pyannote.audio on GPU")
