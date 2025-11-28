@@ -61,6 +61,19 @@ def main(
     input_file: str, output_folder: str, language: str, use_lmstudio: bool
 ) -> None:
     load_dotenv()
+    
+    # Настройка офлайн-режима для Hugging Face
+    offline_mode = os.environ.get("OFFLINE_MODE", "false").lower() == "true"
+    if offline_mode:
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+        print("📴 Офлайн-режим: используются только локальные модели из кэша")
+    else:
+        # Убедиться, что офлайн-режим выключен
+        os.environ.pop("HF_HUB_OFFLINE", None)
+        os.environ.pop("TRANSFORMERS_OFFLINE", None)
+        print("🌐 Онлайн-режим: разрешена загрузка моделей из Hugging Face")
+    
     audio_input_file_path = parse_input_file_path(input_file)
     output_folder_path = parse_output_folder_path(output_folder)
     selected_language = select_language(language)
